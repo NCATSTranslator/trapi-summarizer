@@ -5,6 +5,5 @@ data/
 logs/
 *~
 __pycache__/
-dependencies/
 .DS_Store
 .claude/
