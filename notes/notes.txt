@@ -1,0 +1,46 @@
+- graphwerk's trapimsg.py:
+
+Takes a complete trapi msg and returns a reduced version of it that
+contains only those elements of it that are needed to support
+specified result elements. I.e., if you pass it a full trapi response message and specific result element indices, it will return the trapi msg shrunk down to contain only the fields that are reachable from those result elements (via a DFS-like recursive procedure).
+
+- driver.py
+
+runs end to end fetching (or loading from file) of trapi response, presummary creation, and summary generation from the LLM. Note that it only works on trapi msgs, not on UI format messages
+
+- ui_server.py
+
+- runs an HTTP server that will receive a POST containing a UI payload and will execute the full pre-summary creation -> llm summary generation on the first (0th) result element in the UI format payload. Note that the incoming payload is, in practice, pre-shrunk in the UI before placing the call to this server. 
+
+
+;; * * * summarizers dir * * *
+
+- summarizers/
+
+-- trapi_summarizer.py:
+
+Given a trapi msg and indices, produces a textual (pre-)summary for input into an LLM of those indices.
+
+Uses trapimsg.py functions (but not the shrink() function directly).
+
+Also uses trapi_tools.py 
+
+-- trapi_tools.py
+
+Utility functions for trapi_summarizer to do things like extract pubs, CTs, from trapi nodes. 
+
+-- ui_summarizer.py:
+
+Very similar, in fact functionally identical, to trapi_summarizer.py: takes the ui payload (the payload that's sent from the BE to the FE, constructed from a trapi response msg) and produces the textual (pre-)summary for input into an LLM. Like trapi_summarize.py, takes a set of indices to which it will restrict its output pre-summary.
+
+Uses ui_tools.py:
+
+-- ui_tools.py:
+
+utility functions called by ui_summarizer. This module is more extensive than trapi_tools.py because it contains the types of things that trapi_summarizer.py can call from trapimsg.py.
+
+-- common_utils.py:
+
+A few simple utility functions used by both trapi_summarizer and ui_summarizer that help with pre-summary creation.
+
+
