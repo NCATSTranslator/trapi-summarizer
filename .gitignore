@@ -9,3 +9,5 @@ __pycache__/
 .claude/
 dependencies/*.old
 dependencies/*.prev
+configurations/secrets
+configurations/local-overrides.json
