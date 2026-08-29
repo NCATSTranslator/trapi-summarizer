@@ -1,0 +1,25 @@
+{
+  "document_root": "/app",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "max_tokens": 32000,
+    "timeout_sec": 1200,
+    "thinking": true,
+    "max_turns": 10,
+    "stream_chunk_tokens": 10,
+    "templates": {
+      "general": "yaml/rt3.yaml",
+      "gene": "yaml/nmf.yaml"
+    }
+  },
+  "vertex": {
+    "location": "us-east5"
+  },
+  "_load_gcp_sa": "configurations/gcp-sa.json",
+  "_load_secrets": "configurations/secrets/secrets.json"
+}

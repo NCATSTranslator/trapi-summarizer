@@ -7,11 +7,15 @@ Streaming yields the SAME dict shapes as openai_lib's run_as_loop_streaming:
     {"type": "function_call_outputs", "outputs": [...]}
 ``run_as_loop`` / ``run`` return a LoopResult with an ``.output_text`` attribute.
 
-Templates are the existing flat YAML templates (model/reasoning/tools/instructions
-at top level). The ``model`` field is OpenAI-specific and is IGNORED here — the
-Vertex model comes from the client (CLI/default). ``reasoning`` presence turns on
-the provider's "thinking"; ``tools`` (OpenAI function blocks) are translated to
-each provider's tool format; ``instructions`` becomes the system prompt.
+Templates are the existing flat YAML templates, but on the Vertex path only their
+``tools`` and ``instructions`` are consumed: tools (OpenAI function blocks) are
+translated to each provider's format, and instructions become the system prompt.
+Generation parameters — model, max_tokens, timeout, thinking — come from the
+caller, i.e. from configuration (see ``client_from_config``). The templates'
+``model`` and ``reasoning`` keys are OpenAI-specific and are ignored here, except
+that a client built without an explicit ``thinking`` setting falls back to the
+legacy behaviour of enabling thinking when the template has a ``reasoning`` key,
+so the CLI tools behave exactly as before.
 """
 import os
 import json
@@ -19,6 +23,7 @@ from dataclasses import dataclass
 
 import yaml
 
+import config
 import vertex_creds
 
 
@@ -93,6 +98,24 @@ def _as_text(x):
     return x if isinstance(x, str) else json.dumps(x)
 
 
+def _resolve_credentials(credentials, project):
+    """Use the caller's credentials if given, else fall back to the standalone path."""
+    if credentials is None:
+        return vertex_creds.load_credentials()
+    if not project:
+        raise ValueError("project is required when credentials are supplied")
+    return credentials, project
+
+
+def _thinking_on(setting, template):
+    """Whether to enable provider "thinking" for this call.
+
+    ``None`` means no explicit setting, in which case we fall back to the legacy
+    rule of keying off the template's OpenAI-style ``reasoning`` block.
+    """
+    return ("reasoning" in template) if setting is None else bool(setting)
+
+
 @dataclass
 class LoopResult:
     output_text: str
@@ -102,13 +125,15 @@ class LoopResult:
 # ---------- Gemini (google-genai on Vertex) ----------
 
 class GeminiClient:
-    def __init__(self, model="gemini-2.5-pro", location=None):
+    def __init__(self, model="gemini-2.5-pro", location=None,
+                 credentials=None, project=None, thinking=None):
         from google import genai
-        creds, project = vertex_creds.load_credentials()
+        credentials, project = _resolve_credentials(credentials, project)
         self.model = model
+        self.thinking = thinking
         self._client = genai.Client(vertexai=True, project=project,
                                     location=location or vertex_creds.LOCATION,
-                                    credentials=creds)
+                                    credentials=credentials)
 
     def _config(self, template):
         from google.genai import types as gt
@@ -118,7 +143,7 @@ class GeminiClient:
         tools = openai_tools_to_gemini(template.get("tools"))
         if tools:
             kwargs["tools"] = tools
-        if "reasoning" in template:
+        if _thinking_on(self.thinking, template):
             kwargs["thinking_config"] = gt.ThinkingConfig(include_thoughts=True)
         return gt.GenerateContentConfig(**kwargs)
 
@@ -221,17 +246,19 @@ def _anthropic_text(msg):
 
 class AnthropicVertexClient:
     def __init__(self, model="claude-opus-4-6", location=None,
-                 max_tokens=32000, timeout=1200.0):
+                 max_tokens=32000, timeout=1200.0,
+                 credentials=None, project=None, thinking=None):
         from anthropic import AsyncAnthropicVertex
-        creds, project = vertex_creds.load_credentials()
+        credentials, project = _resolve_credentials(credentials, project)
         self.model = model
         self.max_tokens = max_tokens
+        self.thinking = thinking
         # An explicit timeout is required for non-streaming run()/run_as_loop():
         # the SDK otherwise refuses non-streaming requests whose max_tokens *could*
         # exceed a ~10-min completion (3600*max_tokens/128000 > 600s, i.e. max_tokens
         # > ~21.3k). Setting client.timeout bypasses that guard.
         self._client = AsyncAnthropicVertex(region=location or vertex_creds.LOCATION,
-                                            project_id=project, credentials=creds,
+                                            project_id=project, credentials=credentials,
                                             timeout=timeout)
 
     def _kwargs(self, template):
@@ -241,7 +268,7 @@ class AnthropicVertexClient:
         tools = openai_tools_to_anthropic(template.get("tools"))
         if tools:
             kw["tools"] = tools
-        if "reasoning" in template:
+        if _thinking_on(self.thinking, template):
             # Adaptive thinking (4.6+ generation, e.g. claude-opus-4-6). display=
             # "summarized" so thinking summaries stream as reasoning events.
             kw["thinking"] = {"type": "adaptive", "display": "summarized"}
@@ -324,3 +351,27 @@ def make_client(provider, model=None, **kwargs):
     if provider == "anthropic":
         return AnthropicVertexClient(model=model or "claude-opus-4-6", **kwargs)
     raise ValueError(f"unknown provider: {provider!r} (expected 'gemini' or 'anthropic')")
+
+
+def client_from_config(cfg):
+    """ Build the client described by a bootstrapped configuration."""
+    llm = cfg["llm"]
+    creds, project = vertex_creds.credentials_from(
+        cfg["gcp_sa"],
+        cfg["secrets"]["gcp"]["private_key"],
+        cfg["secrets"]["gcp"].get("private_key_id"))
+
+    kwargs = {"location": cfg["vertex"]["location"], "credentials": creds,
+              "project": project, "thinking": llm.get("thinking")}
+    if llm["provider"] == "anthropic":
+        # Only override the client's own defaults where config states a value.
+        optional = {"max_tokens": llm.get("max_tokens"), "timeout": llm.get("timeout_sec")}
+        kwargs.update({k: v for k, v in optional.items() if v is not None})
+    return make_client(llm["provider"], llm.get("model"), **kwargs)
+
+
+def templates_from_config(cfg):
+    """Load the general and gene templates named in config, resolved to document_root."""
+    paths = cfg["llm"]["templates"]
+    return (expand_template(config.resolve_path(cfg, paths["general"])),
+            expand_template(config.resolve_path(cfg, paths["gene"])))

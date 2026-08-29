@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 """FastAPI server mirroring ui_server.py but backed by Vertex-hosted models.
-The provider is chosen at startup with --provider; the endpoints, payloads, and
-SSE event contract are identical to ui_server.py, so this is a drop-in swap.
 
-    python vertex_server.py --provider gemini [--model ...] [--host 0.0.0.0] [--port 8000]
+Everything that varies — provider, model, generation parameters, templates, and
+the listen address — comes from a configuration file, one per environment. The
+endpoints, payloads, and SSE event contract are identical to ui_server.py, so
+this remains a drop-in swap.
 
-Requires the Vertex service-account key in the environment (GCP_SA_PRIVATE_KEY,
-GCP_SA_PRIVATE_KEY_ID); see vertex_creds.py.
+    python vertex_ui_server.py --config configurations/dev.json [configurations/local-overrides.json]
+
+With no --config, the file is derived from $APP_ENVIRONMENT (see config.py).
+The service-account private key is injected through the secrets configuration;
+see vertex_creds.py.
 """
 import argparse
 import json
+import sys
 
 from fastapi import FastAPI, Request
 from sse_starlette.sse import EventSourceResponse
@@ -17,26 +22,29 @@ from sse_starlette.sse import EventSourceResponse
 from summarizers import ui_summarizer
 from summarizers import ui_tools
 from summarizers import gene_nmf_utils
+import config
 import llm_utils
 import vertex_llm
 
 
-def create_app(provider: str, model: str | None = None) -> FastAPI:
-    client = vertex_llm.make_client(provider, model)
-    template = vertex_llm.expand_template('yaml/rt3.yaml')
-    nmf_template = vertex_llm.expand_template('yaml/nmf.yaml')
+def create_app(cfg) -> FastAPI:
+    client = vertex_llm.client_from_config(cfg)
+    template, nmf_template = vertex_llm.templates_from_config(cfg)
+    max_turns = cfg["llm"]["max_turns"]
+    chunk = cfg["llm"]["stream_chunk_tokens"]
 
     app = FastAPI()
 
     @app.get("/")
     async def root():
-        return {"message": "'Sup", "provider": provider, "model": client.model}
+        return {"message": "'Sup", "provider": cfg["llm"]["provider"], "model": client.model}
 
     @app.post("/summary")
     async def create_summary(payload: dict):
         summary = ui_summarizer.create_ui_summary(payload, 0)
         print(summary)
-        result = await client.run_as_loop(summary, template, llm_utils.handle_fun_call)
+        result = await client.run_as_loop(summary, template, llm_utils.handle_fun_call,
+                                          max_turns)
         return {"response_text": result.output_text}
 
     @app.post("/summary-streaming")
@@ -46,7 +54,8 @@ def create_app(provider: str, model: str | None = None) -> FastAPI:
             print(summary)
             try:
                 async for event in client.run_as_loop_streaming(
-                        summary, template, llm_utils.handle_fun_call, 1, None, 10, 10):
+                        summary, template, llm_utils.handle_fun_call,
+                        1, None, max_turns, chunk):
                     yield {"event": "data", "data": json.dumps({"event": event})}
                     if await request.is_disconnected():
                         break
@@ -79,7 +88,7 @@ def create_app(provider: str, model: str | None = None) -> FastAPI:
                 final_event = None
                 async for event in client.run_as_loop_streaming(
                         nmf_result.presummary, nmf_template, llm_utils.handle_fun_call,
-                        1, None, 10, 10):
+                        1, None, max_turns, chunk):
                     final_event = event
                     yield {"event": "data", "data": json.dumps({"event": event})}
                     if await request.is_disconnected():
@@ -102,15 +111,23 @@ def create_app(provider: str, model: str | None = None) -> FastAPI:
 
 def main():
     p = argparse.ArgumentParser(description="Vertex-backed summary server (mirror of ui_server.py)")
-    p.add_argument('--provider', choices=('gemini', 'anthropic'), required=True,
-                   help='Vertex model provider selected at startup')
-    p.add_argument('--model', type=str, help='Override model id (else provider default)')
-    p.add_argument('--host', default='127.0.0.1')
-    p.add_argument('--port', type=int, default=8000)
+    p.add_argument('-c', '--config', nargs='+', metavar='FILE',
+                   help='Base config file, optionally followed by an override file. '
+                        f'Defaults to configurations/<${config.APP_ENV_VAR}>.json')
     args = p.parse_args()
 
+    try:
+        base, override = config.resolve_config_paths(args.config)
+        cfg = config.bootstrap(base, override)
+    except config.ConfigError as e:
+        sys.exit(f"Configuration error: {e}")
+
+    print(f"Configuration ({base}"
+          f"{' + ' + override if override else ''}):")
+    print(json.dumps(config.redacted(cfg), indent=2))
+
     import uvicorn
-    uvicorn.run(create_app(args.provider, args.model), host=args.host, port=args.port)
+    uvicorn.run(create_app(cfg), host=cfg["server"]["host"], port=cfg["server"]["port"])
 
 
 if __name__ == '__main__':

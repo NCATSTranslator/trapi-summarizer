@@ -15,6 +15,30 @@ To use this module, you must provide your own OpenAI API key.
   and place them in `dependencies/`
 - `$ make install`
 
+## Configuration
+
+Runtime settings for the Vertex server are loaded from JSON files under `configurations/`,
+one per environment (`dev`, `ci`, `test`, `production`), following the same scheme as the
+`ui-be` repo.
+
+- The base file is either given explicitly (`--config configurations/dev.json`) or derived
+  from the `APP_ENVIRONMENT` environment variable.
+- An optional second file is deep-merged on top of the base. `configurations/local-overrides.json`
+  (gitignored) is the place for per-developer settings; at minimum it should set `document_root`
+  to your checkout, since the committed files carry the container path `/app`.
+- A `_load_<name>` key is replaced by the contents of the JSON file it names — resolved against
+  `document_root` — under the key `<name>`.
+
+### Secrets
+
+No module reads a credential from the environment on its own. `configurations/secrets/secrets.json`
+(gitignored, injected at deploy time) is pulled in via `_load_secrets` and is available to the app as
+`config['secrets']`. Any value in the tree may be written as `{"_env": "VAR_NAME"}`, which is
+resolved from the environment at startup. Add `"required": false` to tolerate a missing variable.
+
+The Vertex service account is assembled in memory from two sources that are never combined on
+disk: the non-secret record in `configurations/gcp-sa.json` and the private key from secrets.
+
 ## How to use
 
 - `$ export OPENAI_KEY='<your openai key>'`
@@ -31,3 +55,13 @@ To use this module, you must provide your own OpenAI API key.
 
 If you provide none of `--loop`, `--run`, or `--stream`, the program will print the query request payload and exit without
 submitting it to OpenAI.
+
+### The Vertex server
+
+`vertex_ui_server.py` serves the same endpoints as `ui_server.py` but against Vertex-hosted
+models. Provider, model, generation parameters, templates, and listen address all come from
+the configuration file, so the only launch argument is the config itself:
+
+- `$ python vertex_ui_server.py --config configurations/dev.json configurations/local-overrides.json`
+
+It has no module-level `app`, so it must be launched this way rather than via `uvicorn`.
