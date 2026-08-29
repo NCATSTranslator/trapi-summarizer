@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-"""List the Vertex models this service account can actually call, in us-east5.
+"""Utility function to list available models for provider/region.
 
-Gemini models are listed via the google-genai client; Anthropic (Claude) models
-via the Vertex publisher-models REST endpoint. Credentials are assembled
-in-process by vertex_creds; no secret material is printed.
+Needs to use vertex_creds.
 
 Usage:
     python vertex_models.py [--provider gemini|anthropic|both] [--location us-east5]
