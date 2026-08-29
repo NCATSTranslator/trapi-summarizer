@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 """FastAPI server mirroring ui_server.py but backed by Vertex-hosted models.
 
-Everything that varies — provider, model, generation parameters, templates, and
-the listen address — comes from a configuration file, one per environment. The
-endpoints, payloads, and SSE event contract are identical to ui_server.py, so
-this remains a drop-in swap.
+Provider, model, generation parameters, templates, and the listen address come
+from a configuration file, one per environment. Endpoints, payloads, and the SSE
+event contract match ui_server.py.
 
     python vertex_ui_server.py --config configurations/dev.json [configurations/local-overrides.json]
 
-With no --config, the file is derived from $APP_ENVIRONMENT (see config.py).
-The service-account private key is injected through the secrets configuration;
-see vertex_creds.py.
+With no --config, derive the file from $APP_ENVIRONMENT. See vertex_creds.py for
+the service-account private key.
 """
 import argparse
 import json

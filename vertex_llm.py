@@ -7,15 +7,11 @@ Streaming yields the SAME dict shapes as openai_lib's run_as_loop_streaming:
     {"type": "function_call_outputs", "outputs": [...]}
 ``run_as_loop`` / ``run`` return a LoopResult with an ``.output_text`` attribute.
 
-Templates are the existing flat YAML templates, but on the Vertex path only their
-``tools`` and ``instructions`` are consumed: tools (OpenAI function blocks) are
-translated to each provider's format, and instructions become the system prompt.
-Generation parameters — model, max_tokens, timeout, thinking — come from the
-caller, i.e. from configuration (see ``client_from_config``). The templates'
-``model`` and ``reasoning`` keys are OpenAI-specific and are ignored here, except
-that a client built without an explicit ``thinking`` setting falls back to the
-legacy behaviour of enabling thinking when the template has a ``reasoning`` key,
-so the CLI tools behave exactly as before.
+From the flat YAML templates, consume only ``tools`` (translated to each
+provider's format) and ``instructions`` (the system prompt). Ignore the
+OpenAI-specific ``model`` and ``reasoning`` keys; generation parameters come from
+the caller — see ``client_from_config``. A client built without an explicit
+``thinking`` setting falls back to keying off the template's ``reasoning`` block.
 """
 import os
 import json
@@ -108,11 +104,7 @@ def _resolve_credentials(credentials, project):
 
 
 def _thinking_on(setting, template):
-    """Whether to enable provider "thinking" for this call.
-
-    ``None`` means no explicit setting, in which case we fall back to the legacy
-    rule of keying off the template's OpenAI-style ``reasoning`` block.
-    """
+    """Whether to enable provider "thinking". ``None`` keys off the template."""
     return ("reasoning" in template) if setting is None else bool(setting)
 
 
@@ -364,7 +356,7 @@ def client_from_config(cfg):
     kwargs = {"location": cfg["vertex"]["location"], "credentials": creds,
               "project": project, "thinking": llm.get("thinking")}
     if llm["provider"] == "anthropic":
-        # Only override the client's own defaults where config states a value.
+        # Override the client defaults only where config states a value.
         optional = {"max_tokens": llm.get("max_tokens"), "timeout": llm.get("timeout_sec")}
         kwargs.update({k: v for k, v in optional.items() if v is not None})
     return make_client(llm["provider"], llm.get("model"), **kwargs)

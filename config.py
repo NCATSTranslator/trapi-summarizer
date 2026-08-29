@@ -1,22 +1,15 @@
 """File-based configuration, modelled on the ui-be repo's ``lib/config.mjs``.
 
-A run is configured by a base JSON file (one per environment) plus an optional
-override file for per-developer deviation. Bootstrapping proceeds in four steps:
+Load a base JSON file (one per environment) plus an optional override file.
+Bootstrapping:
 
-1. ``document_root`` is reconciled between base and override. It anchors every
-   relative path in the config, so a committed ``dev.json`` can say ``/app``
-   (the container path) while a developer's override points at their checkout.
-2. ``_load_<name>`` keys are replaced by the JSON they point at, under the key
-   ``<name>``. This is what composes the tree out of per-environment and
-   env-invariant fragments. Unlike ui-be's, expansion here is recursive, so a
-   fragment may itself contain ``_load_`` keys.
-3. Base and override are each expanded independently, then deep-merged.
-4. ``{"_env": "VAR"}`` leaves are replaced by the environment variable's value.
-   This is the secrets-injection seam: deployments inject a secrets file with
-   literal values, while a developer's file names env vars instead, and the
-   consuming code reads the same ``config['secrets'][...]`` either way.
+1. Reconcile ``document_root``. It anchors every relative path in the config.
+2. Replace each ``_load_<name>`` key with the JSON it names, under ``<name>``.
+   Recursive: a fragment may itself contain ``_load_`` keys.
+3. Expand base and override independently, then deep-merge.
+4. Replace ``{"_env": "VAR"}`` leaves with the environment variable's value.
 
-The result is frozen: config is read-only after bootstrap.
+The result is frozen.
 """
 import copy
 import json
@@ -26,8 +19,7 @@ APP_ENV_VAR = "APP_ENVIRONMENT"
 CONFIG_DIR = "configurations"
 _LOAD_PREFIX = "_load_"
 
-# Dotted paths that must be present and non-None after bootstrap. Checked once,
-# loudly, at startup rather than surfacing later as an opaque failure.
+# Dotted paths that must be present and non-None after bootstrap.
 REQUIRED_PATHS = (
     "document_root",
     "server.host",
@@ -47,7 +39,7 @@ class ConfigError(Exception):
 
 
 class FrozenDict(dict):
-    """A dict that refuses mutation, so nothing can patch config at runtime."""
+    """A dict that refuses mutation."""
 
     def _immutable(self, *args, **kwargs):
         raise TypeError("configuration is read-only after bootstrap")
@@ -55,7 +47,7 @@ class FrozenDict(dict):
     __setitem__ = __delitem__ = _immutable
     update = setdefault = pop = popitem = clear = _immutable
 
-    # Copying yields plain, mutable dicts: copy it if you mean to change it.
+    # Copies are plain dicts.
     def __copy__(self):
         return {k: v for k, v in self.items()}
 
@@ -70,8 +62,7 @@ def bootstrap(base_path: str, override_path: str | None = None) -> FrozenDict:
     config = _read_json(base_path)
     if override_path:
         overrides = _read_json(override_path)
-        # The override's document_root wins if it has one; otherwise it inherits
-        # the base's, so both trees resolve their relative paths identically.
+        # The override's document_root wins; otherwise it inherits the base's.
         if overrides.get("document_root") is not None:
             config["document_root"] = overrides["document_root"]
         else:
@@ -86,12 +77,7 @@ def bootstrap(base_path: str, override_path: str | None = None) -> FrozenDict:
 
 
 def resolve_config_paths(paths: list[str] | None) -> tuple[str, str | None]:
-    """Return ``(base, override)`` from explicit CLI paths, else from the env.
-
-    Explicit paths always win. Absent them we fall back to the single env var
-    the deployment platform gives us, mapping it to ``configurations/<env>.json``
-    (the same mapping ui-be's entrypoint.sh performs in shell).
-    """
+    """Return ``(base, override)`` from explicit CLI paths, else from ``$APP_ENVIRONMENT``."""
     if paths:
         if len(paths) > 2:
             raise ConfigError(f"expected at most 2 config paths, got {len(paths)}")
@@ -185,8 +171,7 @@ def _merge(orig, overwrite):
 def _resolve_env_refs(node):
     """Replace ``{"_env": "VAR"}`` leaves in place with the env var's value.
 
-    Missing variables are an error unless the leaf sets ``"required": false``,
-    in which case the value resolves to None.
+    A missing variable is an error unless the leaf sets ``"required": false``.
     """
     if isinstance(node, list):
         for item in node:

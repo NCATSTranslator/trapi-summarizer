@@ -32,17 +32,14 @@ _SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
 def credentials_from(sa_info: dict, private_key: str, private_key_id: str | None = None):
     """Return ``(credentials, project_id)`` from SA metadata plus a private key.
 
-    ``sa_info`` is the non-secret service-account record; it is copied rather
-    than mutated so the caller's (frozen) config is never written into.
+    Copies ``sa_info``; the caller's config may be frozen.
     """
     if not private_key:
         raise RuntimeError(
             "No service-account private key supplied. Provide it via the secrets "
-            "configuration (or GCP_SA_PRIVATE_KEY); it is merged in-process and "
-            "never written to disk or logged.")
+            "configuration or GCP_SA_PRIVATE_KEY.")
 
-    # Env vars and JSON-escaped values typically carry the PEM with literal
-    # backslash-n; restore real newlines.
+    # Restore real newlines; the PEM often arrives with literal backslash-n.
     info = dict(sa_info)
     info["private_key"] = private_key.replace("\\n", "\n")
     if private_key_id:
@@ -55,9 +52,7 @@ def credentials_from(sa_info: dict, private_key: str, private_key_id: str | None
 def load_credentials(sa_path: str = _SA_PATH):
     """Return ``(credentials, project_id)`` for tools that have no config loaded.
 
-    Reads the non-secret SA fields from ``sa_path`` and the key material from the
-    environment. Raises RuntimeError if the private-key env var is absent, so the
-    failure is obvious rather than surfacing later as an opaque auth error.
+    Read the SA fields from ``sa_path`` and the key material from the environment.
     """
     with open(sa_path) as f:
         sa_info = json.load(f)  # non-secret fields only
@@ -65,8 +60,7 @@ def load_credentials(sa_path: str = _SA_PATH):
     private_key = os.environ.get("GCP_SA_PRIVATE_KEY")
     if not private_key:
         raise RuntimeError(
-            "GCP_SA_PRIVATE_KEY is not set. Export the service-account private key "
-            "(and ideally GCP_SA_PRIVATE_KEY_ID) in the environment; they are merged "
-            "in-process and never written to disk or logged.")
+            "GCP_SA_PRIVATE_KEY is not set. Export the service-account private key, "
+            "and ideally GCP_SA_PRIVATE_KEY_ID.")
 
     return credentials_from(sa_info, private_key, os.environ.get("GCP_SA_PRIVATE_KEY_ID"))
