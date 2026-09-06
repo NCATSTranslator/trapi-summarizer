@@ -23,7 +23,7 @@ import os
 import json
 from google.oauth2 import service_account
 
-LOCATION = "us-east5"
+LOCATION = "global"
 _SA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "configurations", "gcp-sa.json")
 _SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)

@@ -6,7 +6,7 @@
   },
   "llm": {
     "provider": "anthropic",
-    "model": "claude-opus-4-6",
+    "model": "claude-opus-4-8",
     "max_tokens": 32000,
     "timeout_sec": 1200,
     "thinking": true,
@@ -18,7 +18,7 @@
     }
   },
   "vertex": {
-    "location": "us-east5"
+    "location": "global"
   },
   "_load_gcp_sa": "configurations/gcp-sa.json",
   "_load_secrets": "configurations/secrets/secrets.json"

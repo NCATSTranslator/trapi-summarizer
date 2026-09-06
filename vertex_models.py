@@ -32,11 +32,20 @@ def list_gemini(creds, project: str, location: str) -> list[str]:
     return names
 
 
+def _api_host(location: str) -> str:
+    """Vertex API host for a location. `global`, `us`, and `eu` are not prefixes."""
+    if location == "global":
+        return "aiplatform.googleapis.com"
+    if location in ("us", "eu"):
+        return f"aiplatform.{location}.rep.googleapis.com"
+    return f"{location}-aiplatform.googleapis.com"
+
+
 def list_anthropic(creds, location: str) -> list[str]:
     """Anthropic models on Vertex are 'publisher models'; the anthropic SDK has no
     list endpoint, so query the Vertex Model Garden REST API directly."""
     token = _access_token(creds)
-    url = (f"https://{location}-aiplatform.googleapis.com/v1beta1/"
+    url = (f"https://{_api_host(location)}/v1beta1/"
            f"publishers/anthropic/models")
     r = httpx.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=30.0)
     r.raise_for_status()

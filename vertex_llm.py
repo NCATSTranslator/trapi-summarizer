@@ -228,7 +228,7 @@ class GeminiClient:
 
 
 # ---------- Anthropic (claude on Vertex) ----------
-# Verified working on claude-opus-4-6 (thinking + tools + streaming). Uses adaptive
+# Verified working on claude-opus-4-8 (thinking + tools + streaming). Uses adaptive
 # thinking; older-generation models (e.g. sonnet-4-5) would instead need
 # {"type": "enabled", "budget_tokens": ...} and are not targeted here.
 
@@ -237,7 +237,7 @@ def _anthropic_text(msg):
 
 
 class AnthropicVertexClient:
-    def __init__(self, model="claude-opus-4-6", location=None,
+    def __init__(self, model="claude-opus-4-8", location=None,
                  max_tokens=32000, timeout=1200.0,
                  credentials=None, project=None, thinking=None):
         from anthropic import AsyncAnthropicVertex
@@ -261,7 +261,7 @@ class AnthropicVertexClient:
         if tools:
             kw["tools"] = tools
         if _thinking_on(self.thinking, template):
-            # Adaptive thinking (4.6+ generation, e.g. claude-opus-4-6). display=
+            # Adaptive thinking (4.6+ generation, e.g. claude-opus-4-8). display=
             # "summarized" so thinking summaries stream as reasoning events.
             kw["thinking"] = {"type": "adaptive", "display": "summarized"}
         return kw
@@ -341,7 +341,7 @@ def make_client(provider, model=None, **kwargs):
     if provider == "gemini":
         return GeminiClient(model=model or "gemini-2.5-pro", **kwargs)
     if provider == "anthropic":
-        return AnthropicVertexClient(model=model or "claude-opus-4-6", **kwargs)
+        return AnthropicVertexClient(model=model or "claude-opus-4-8", **kwargs)
     raise ValueError(f"unknown provider: {provider!r} (expected 'gemini' or 'anthropic')")
 
 
