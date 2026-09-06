@@ -1,0 +1,27 @@
+# Version control, editor droppings, caches
+**/.git*
+**/__pycache__/
+**/*~
+**/*.old
+**/*.prev
+**/.DS_Store
+.claude/
+.venv/
+
+# Data and developer-only directories
+data/
+junk/
+logs/
+notes/
+assets/
+validators/
+
+# Root-level JSON is scratch or credentials; real config lives in configurations/
+*.json
+*.log
+out
+parse.py
+
+# Secrets and developer-local settings
+configurations/secrets/
+configurations/local-overrides.json
